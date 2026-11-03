@@ -1,0 +1,14 @@
+{
+  "count": 3008,
+  "dims": 384,
+  "dtype": "float16-le",
+  "model": "BAAI/bge-small-en-v1.5",
+  "source": "HackerTube (https://hackertube.org), ODC-By 1.0",
+  "content_types": [
+    "course",
+    "explainer",
+    "lecture",
+    "talk",
+    "tutorial"
+  ]
+}

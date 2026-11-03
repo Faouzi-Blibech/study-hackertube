@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>StudyHackerTube</title>
+    <link rel="stylesheet" href="./sidepanel.css" />
+  </head>
+  <body>
+    <header>
+      <h1>StudyHackerTube</h1>
+      <p class="tag">Find the video segments that explain your course PDF. Your PDF never leaves your browser.</p>
+    </header>
+    <main>
+      <section class="actions">
+        <button id="analyze-tab" type="button" disabled>Analyze PDF in this tab</button>
+        <p id="tab-hint" class="hint"></p>
+        <label class="file">
+          <span>Choose PDF file</span>
+          <input id="file-input" type="file" accept="application/pdf,.pdf" />
+        </label>
+      </section>
+      <section id="progress" hidden>
+        <div class="bar"><div id="bar-fill"></div></div>
+        <p id="progress-text" class="hint"></p>
+      </section>
+      <p id="error" class="error" role="alert" hidden></p>
+      <section id="notice" class="notice" hidden></section>
+      <section id="course" class="course" hidden></section>
+      <ul id="results" class="results"></ul>
+    </main>
+    <footer>Video data from HackerTube (hackertube.org), ODC-By 1.0.</footer>
+    <script type="module" src="./sidepanel.ts"></script>
+  </body>
+</html>

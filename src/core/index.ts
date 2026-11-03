@@ -1,0 +1,75 @@
+// Single entry point for the UI: PDF file in, chunks and ranked video matches out.
+// Everything runs in the browser; the PDF is never uploaded.
+import type { CourseIdentity, Coverage, Match, PdfChunk, Video } from './types';
+import { chunkEmbeddingText, chunkPages } from './chunk';
+import { loadSegments, loadTaxonomy, loadVideoIndex } from './data';
+import { embedTexts } from './embed';
+import { buildCentroids, identifyCourse } from './identify';
+import { extractPdf } from './pdf';
+import { retrieve } from './retrieve';
+
+export type Stage = 'extract' | 'chunk' | 'model' | 'embed' | 'retrieve' | 'done';
+
+export interface Progress {
+  stage: Stage;
+  /** 0..1 within the stage. */
+  fraction: number;
+  message: string;
+}
+
+export interface AnalysisResult {
+  chunks: PdfChunk[];
+  matches: Match[];
+  /** How well HackerTube covers this course; drives the "limited coverage" notice. */
+  coverage: Coverage;
+  /** Decision 1 (course identification); absent only when the taxonomy cannot be loaded. */
+  course?: CourseIdentity;
+}
+
+export async function analyzePdf(file: File, onProgress: (p: Progress) => void = () => {}): Promise<AnalysisResult> {
+  const report = (stage: Stage, fraction: number, message: string): void => onProgress({ stage, fraction, message });
+
+  report('extract', 0, 'Reading PDF');
+  const pages = await extractPdf(file);
+  report('extract', 1, `Read ${pages.length} pages`);
+
+  const chunks = chunkPages(pages);
+  report('chunk', 1, `Split into ${chunks.length} chunks`);
+  if (chunks.length === 0) {
+    report('done', 1, 'No readable text found in this PDF');
+    return { chunks, matches: [], coverage: { level: 'limited', coveredChunks: 0, totalChunks: 0, gaps: [] } };
+  }
+
+  report('model', 0, 'Loading embedding model');
+  const [index, chunkEmb] = await Promise.all([
+    loadVideoIndex(),
+    embedTexts(chunks.map(chunkEmbeddingText), {
+      onModelProgress: (f) => report('model', f, 'Downloading embedding model'),
+      onBatch: (done, total) => report('embed', done / total, `Embedded ${done} of ${total} chunks`),
+    }),
+  ]);
+
+  report('retrieve', 0, 'Finding videos');
+  const { matches, coverage } = await retrieve(chunks, chunkEmb, index.videos, index.embeddings, index.dims, loadSegments);
+  const course = await identify(chunkEmb, index.videos, index.embeddings, index.dims);
+  report('done', 1, `Found ${matches.length} videos`);
+  return { chunks, matches, coverage, course };
+}
+
+/** Course identification must never break the main result: a missing taxonomy just leaves it out. */
+async function identify(
+  chunkEmb: Float32Array,
+  videos: Video[],
+  embeddings: Float32Array,
+  dims: number,
+): Promise<CourseIdentity | undefined> {
+  try {
+    const taxonomy = await loadTaxonomy();
+    return identifyCourse(chunkEmb, buildCentroids(videos, embeddings, dims, taxonomy));
+  } catch {
+    return undefined;
+  }
+}
+
+export type { CourseIdentity, Coverage, GalaxyData, Match, PdfChunk, Segment, Video } from './types';
+export { COVERAGE_THRESHOLD } from './coverage';

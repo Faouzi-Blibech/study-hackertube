@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <meta
+      name="description"
+      content="Upload a course PDF and get the HackerTube videos, with start times, that explain it."
+    />
+    <title>StudyHackerTube</title>
+  </head>
+  <body>
+    <div class="page">
+      <header class="site-header">
+        <div class="brand">
+          <h1>Study<span>HackerTube</span></h1>
+          <p class="tagline">Upload a course PDF. We pick the HackerTube videos, and the moment to start.</p>
+        </div>
+        <label class="upload" id="upload-label">
+          <input id="pdf-input" type="file" accept=".pdf,application/pdf" />
+          <span class="upload-text">Upload course PDF</span>
+        </label>
+      </header>
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+      <div id="coverage" class="notice" role="note" hidden></div>
+      <main id="app" data-ready="false">
+        <section id="results" aria-labelledby="results-title"></section>
+      </main>
+      <footer class="site-footer">
+        Video data from HackerTube (hackertube.org), ODC-By 1.0. Not affiliated with YouTube or HackerTube.
+      </footer>
+    </div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

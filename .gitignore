@@ -218,3 +218,22 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# HackerTube raw data (large, ODC-By, not redistributed)
+data/raw/
+# Node / Vite
+node_modules/
+dist/
+
+# Raw YouTube transcripts (creator content, not redistributed)
+data/transcripts/
+
+# Laya evaluation venv
+.venv-laya/
+
+# Chrome extension build output
+dist-extension/
+
+# Personal notes (local only)
+LEARNING.md
+PROGRESS.md

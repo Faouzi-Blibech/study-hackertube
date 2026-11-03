@@ -1,0 +1,38 @@
+{
+  "name": "study-hackertube",
+  "version": "0.1.0",
+  "description": "Upload course PDFs, get the exact HackerTube video segments that explain each chapter.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "build:ext": "tsc --noEmit && vite build --config vite.extension.config.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Faouzi-Blibech/study-hackertube.git"
+  },
+  "license": "MIT",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/Faouzi-Blibech/study-hackertube/issues"
+  },
+  "homepage": "https://github.com/Faouzi-Blibech/study-hackertube#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.64.1",
+    "@types/chrome": "^0.3.7",
+    "@types/node": "^26.6.6",
+    "@types/three": "^0.187.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5",
+    "vitest": "^5.1.0"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^4.3.2",
+    "pdfjs-dist": "^6.5.438",
+    "three": "^0.187.0"
+  },
+  "private": true
+}
