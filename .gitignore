@@ -227,3 +227,9 @@ dist/
 
 # Raw YouTube transcripts (creator content, not redistributed)
 data/transcripts/
+
+# Laya evaluation venv
+.venv-laya/
+
+# Chrome extension build output
+dist-extension/

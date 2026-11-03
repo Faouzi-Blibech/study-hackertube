@@ -1,0 +1,33 @@
+:root { color-scheme: light dark; --red: #d32f2f; --bg: #fff; --fg: #1a1a1a; --muted: #666; --line: #e3e3e3; --card: #f6f6f6; }
+@media (prefers-color-scheme: dark) { :root { --bg: #171717; --fg: #eee; --muted: #aaa; --line: #333; --card: #222; } }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 300px; font: 14px/1.4 system-ui, sans-serif; background: var(--bg); color: var(--fg); }
+header, main, footer { padding: 12px 14px; }
+h1 { margin: 0 0 4px; font-size: 18px; color: var(--red); }
+h2 { margin: 0 0 6px; font-size: 14px; }
+p { margin: 0 0 8px; }
+.tag, .hint, footer { color: var(--muted); font-size: 12px; }
+footer { border-top: 1px solid var(--line); }
+button, .file span { display: block; width: 100%; padding: 9px 12px; border: 0; border-radius: 6px; font: inherit; font-weight: 600; text-align: center; cursor: pointer; }
+button { background: var(--red); color: #fff; }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+.file { display: block; margin-top: 8px; }
+.file span { background: var(--card); color: var(--fg); border: 1px solid var(--line); }
+.file input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.file input:focus-visible + *, .file:focus-within span, button:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+.bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+#bar-fill { height: 100%; width: 0; background: var(--red); transition: width 0.15s; }
+#progress { margin: 12px 0; }
+.error { color: var(--red); font-weight: 600; }
+.notice, .course { margin: 12px 0; padding: 10px 12px; border-radius: 6px; background: var(--card); border-left: 3px solid var(--red); }
+.course { border-left-color: var(--muted); }
+.results { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 10px; }
+.card { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--card); }
+.card a.open { display: block; color: inherit; text-decoration: none; }
+.card img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; background: var(--line); }
+.card .body { padding: 8px 10px 4px; }
+.card .title { font-weight: 600; }
+.card .meta { color: var(--muted); font-size: 12px; }
+.card .time { color: var(--red); font-weight: 600; }
+.card .more { padding: 0 10px 8px; font-size: 12px; }
+.card .more a { color: var(--muted); }
