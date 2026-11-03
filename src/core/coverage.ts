@@ -8,6 +8,7 @@
 // backprop) scored 0.76-0.82; topics it lacks (Hadoop MapReduce, HDFS, PLC ladder logic, VHDL,
 // bookkeeping, organic chemistry) scored 0.65-0.73. See LEARNING.md, "Coverage notice".
 import type { ChunkHit } from './retrieve';
+import { shortTitle } from './text';
 import type { Coverage, PdfChunk } from './types';
 
 export const COVERAGE_THRESHOLD = 0.74;
@@ -17,7 +18,7 @@ const MAX_GAPS = 5;
 const GAP_WORDS = 6;
 
 function label(chunk: PdfChunk): string {
-  if (chunk.heading) return chunk.heading.trim();
+  if (chunk.heading) return shortTitle(chunk.heading, 40);
   return chunk.text.trim().split(/\s+/).slice(0, GAP_WORDS).join(' ');
 }
 

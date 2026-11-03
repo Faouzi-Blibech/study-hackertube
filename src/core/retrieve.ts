@@ -13,6 +13,7 @@
 import type { Coverage, Match, PdfChunk, SectionMatches, Segment, Video } from './types';
 import type { VideoSegments } from './data';
 import { assessCoverage } from './coverage';
+import { shortTitle } from './text';
 
 export interface RetrieveOptions {
   topKPerChunk?: number; // default 40
@@ -126,7 +127,7 @@ export function groupChunks(chunks: PdfChunk[], cap = 12): ChunkGroup[] {
     const first = groups[left]!;
     const second = groups[left + 1]!;
     groups.splice(left, 2, {
-      title: first.title === second.title ? first.title : `${first.title} / ${second.title}`,
+      title: first.title, // merged groups keep the first heading; long joined titles are unreadable
       indices: [...first.indices, ...second.indices],
     });
   }
@@ -196,8 +197,9 @@ export async function retrieve(
       const selected = new Set(group.indices);
       const groupHits = hits.map((row, index) => selected.has(index) ? row : []);
       const ranked = aggregateCandidates(groupHits, videos, { ...opts, topVideos: 5, scoreBoost: 0 });
-      return { title: group.title, matches: await toMatches(ranked, ranked[0]?.aggregate ?? 1) };
+      return { title: shortTitle(group.title), matches: await toMatches(ranked, ranked[0]?.aggregate ?? 1) };
     })),
   ]);
   return { matches, coverage, sections };
 }
+
