@@ -297,3 +297,47 @@ infinity/NaN (exp = 31). The tests check each case.
 - The pdf.js worker import has been type-checked but not yet run in a real browser build (checked
   when the UI is wired).
 - The heading detector is untuned; it gets tuned on the real Big Data and PLC/VHDL PDFs in step 10.
+
+---
+
+## Coverage notice: "it's the catalog, not the app"
+
+**Date:** 2026-11-03
+
+### Why
+
+HackerTube only contains videos Hacker News readers recommended again and again (at least 3
+people, in at least 3 different months). It is strong on programming, CS, math and science talks
+and thin on specialized course topics: there is 1 Hadoop video in 3,008. Retrieval always returns
+*something*, so without a notice a student would see loosely related videos and blame the app.
+
+### What was built
+
+- `src/core/coverage.ts`: `assessCoverage` checks each PDF chunk's best video similarity against
+  `COVERAGE_THRESHOLD = 0.74` and returns `{level: good | partial | limited, coveredChunks,
+  totalChunks, gaps}` (up to 5 weakly covered topic names). 6 table-driven tests.
+- `analyzePdf` now returns `coverage`; each `Match` carries its absolute `similarity`.
+- The UI shows a neutral info box for partial/limited coverage explaining that the gap comes from
+  the source catalog, plus a "Loose match" label on videos below the threshold.
+
+### Key concepts
+
+**Relative vs. absolute scores.** The match score is relative (best match = 1.0), which is good for
+ranking but always looks confident. Cosine similarity is absolute: it says how close the best
+video actually is. Honest UIs need both: one to order results, one to say "nothing fits well".
+
+**Calibrating a threshold with real data.** Instead of guessing, we embedded 11 test topics and
+looked at the best similarity. Covered topics: 0.76-0.82. Missing topics (Hadoop, HDFS, PLC ladder
+logic, VHDL, bookkeeping, organic chemistry): 0.65-0.73. 0.74 sits in the gap. bge-small scores
+cluster high (even unrelated texts get ~0.6), so thresholds for this model are always in the 0.7s.
+
+**Coverage share.** good: at least 60% of chunks covered; partial: 30-60%; limited: below 30%.
+
+### Options considered
+
+| Option | Trade-off |
+|---|---|
+| **Threshold on best chunk similarity** (chosen) | Simple, explainable, calibrated on real topics. One number to retune. |
+| Gap between top-1 and top-3 similarity | Flat score lists hint at "no real match", but the signal was noisy in the test set. |
+| Ask Laya "does this video explain this chunk?" | More precise in theory, but Laya is near chance zero-shot (step 2 findings). Revisit in step 6. |
+| No notice, show results anyway | Misleads students into thinking the app failed. |

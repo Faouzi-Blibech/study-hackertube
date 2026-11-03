@@ -1,6 +1,6 @@
 // Single entry point for the UI: PDF file in, chunks and ranked video matches out.
 // Everything runs in the browser; the PDF is never uploaded.
-import type { Match, PdfChunk } from './types';
+import type { Coverage, Match, PdfChunk } from './types';
 import { chunkEmbeddingText, chunkPages } from './chunk';
 import { loadSegments, loadVideoIndex } from './data';
 import { embedTexts } from './embed';
@@ -19,6 +19,8 @@ export interface Progress {
 export interface AnalysisResult {
   chunks: PdfChunk[];
   matches: Match[];
+  /** How well HackerTube covers this course; drives the "limited coverage" notice. */
+  coverage: Coverage;
 }
 
 export async function analyzePdf(file: File, onProgress: (p: Progress) => void = () => {}): Promise<AnalysisResult> {
@@ -32,7 +34,7 @@ export async function analyzePdf(file: File, onProgress: (p: Progress) => void =
   report('chunk', 1, `Split into ${chunks.length} chunks`);
   if (chunks.length === 0) {
     report('done', 1, 'No readable text found in this PDF');
-    return { chunks, matches: [] };
+    return { chunks, matches: [], coverage: { level: 'limited', coveredChunks: 0, totalChunks: 0, gaps: [] } };
   }
 
   report('model', 0, 'Loading embedding model');
@@ -45,9 +47,10 @@ export async function analyzePdf(file: File, onProgress: (p: Progress) => void =
   ]);
 
   report('retrieve', 0, 'Finding videos');
-  const matches = await retrieve(chunks, chunkEmb, index.videos, index.embeddings, index.dims, loadSegments);
+  const { matches, coverage } = await retrieve(chunks, chunkEmb, index.videos, index.embeddings, index.dims, loadSegments);
   report('done', 1, `Found ${matches.length} videos`);
-  return { chunks, matches };
+  return { chunks, matches, coverage };
 }
 
-export type { Match, PdfChunk, Segment, Video } from './types';
+export type { Coverage, Match, PdfChunk, Segment, Video } from './types';
+export { COVERAGE_THRESHOLD } from './coverage';

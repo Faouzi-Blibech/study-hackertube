@@ -38,4 +38,16 @@ export interface Match {
   startSeconds: number; // 0 when no segment-level match exists yet
   segment: Segment | null;
   chunkIds: number[]; // which PDF chunks this match explains
+  similarity?: number; // best absolute cosine between this video and any chunk (0..1)
+}
+
+/**
+ * How well HackerTube's catalog covers the uploaded course. A low level means the source data
+ * has few videos on these topics; it is not a failure of the app.
+ */
+export interface Coverage {
+  level: 'good' | 'partial' | 'limited';
+  coveredChunks: number;
+  totalChunks: number;
+  gaps: string[]; // up to 5 weakly covered topics (chunk headings or first words)
 }

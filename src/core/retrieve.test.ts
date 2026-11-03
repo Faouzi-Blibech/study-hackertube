@@ -77,7 +77,7 @@ describe('retrieve', () => {
       segments: [{ start: 5, end: 10, text: 'a' }, { start: 99, end: 120, text: 'b' }],
       embeddings: f(unit(0, 0, 1), unit(1, 0, 0)),
     };
-    const matches = await retrieve(chunks, chunkEmb, videos, videoEmb, DIMS, async (vid) => (vid === 'A' ? segs : null), {
+    const { matches } = await retrieve(chunks, chunkEmb, videos, videoEmb, DIMS, async (vid) => (vid === 'A' ? segs : null), {
       topKPerChunk: 2,
       topVideos: 3,
     });
@@ -96,6 +96,6 @@ describe('retrieve', () => {
   });
 
   it('returns nothing for an empty document', async () => {
-    expect(await retrieve([], new Float32Array(0), videos, videoEmb, DIMS, async () => null)).toEqual([]);
+    expect((await retrieve([], new Float32Array(0), videos, videoEmb, DIMS, async () => null)).matches).toEqual([]);
   });
 });

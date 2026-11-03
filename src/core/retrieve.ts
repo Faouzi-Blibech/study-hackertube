@@ -10,8 +10,9 @@
 // Step B (segment level): for each candidate, take the best segment against the chunks that
 //   hit it (max dot product); startSeconds = that segment's start.
 // Final score = aggregate / best aggregate, so the top match is 1 and the rest are relative.
-import type { Match, PdfChunk, Segment, Video } from './types';
+import type { Coverage, Match, PdfChunk, Segment, Video } from './types';
 import type { VideoSegments } from './data';
+import { assessCoverage } from './coverage';
 
 export interface RetrieveOptions {
   topKPerChunk?: number; // default 20
@@ -29,6 +30,13 @@ export interface Candidate {
   aggregate: number;
   /** Chunk indices (into the chunk embedding matrix) that hit this video, best first. */
   chunkIdxs: number[];
+  /** Best single chunk similarity for this video (absolute cosine). */
+  maxSim: number;
+}
+
+export interface RetrieveResult {
+  matches: Match[];
+  coverage: Coverage;
 }
 
 function dot(a: Float32Array, aOff: number, b: Float32Array, bOff: number, dims: number): number {
@@ -82,7 +90,7 @@ export function aggregateCandidates(
   for (const [videoIdx, e] of acc) {
     const aggregate = e.sum * (1 + (boost * (videos[videoIdx]?.score ?? 0)) / maxScore);
     e.hits.sort((a, b) => b.sim - a.sim);
-    candidates.push({ videoIdx, aggregate, chunkIdxs: e.hits.map((h) => h.chunk) });
+    candidates.push({ videoIdx, aggregate, chunkIdxs: e.hits.map((h) => h.chunk), maxSim: e.hits[0]?.sim ?? 0 });
   }
   candidates.sort((a, b) => b.aggregate - a.aggregate);
   return candidates.slice(0, topN);
@@ -115,12 +123,13 @@ export async function retrieve(
   dims: number,
   loadSegments: (vid: string) => Promise<VideoSegments | null>,
   opts: RetrieveOptions = {},
-): Promise<Match[]> {
-  if (chunks.length === 0) return [];
+): Promise<RetrieveResult> {
+  if (chunks.length === 0) return { matches: [], coverage: assessCoverage([], []) };
   const hits = topVideosPerChunk(chunkEmb, videoEmb, dims, opts.topKPerChunk ?? 20);
   const candidates = aggregateCandidates(hits, videos, opts);
   const best = candidates[0]?.aggregate ?? 1;
-  return Promise.all(
+  const coverage = assessCoverage(chunks, hits);
+  const matches = await Promise.all(
     candidates.map(async (cand): Promise<Match> => {
       const video = videos[cand.videoIdx]!;
       const found = bestSegment(await loadSegments(video.vid), chunkEmb, cand.chunkIdxs, dims);
@@ -130,7 +139,9 @@ export async function retrieve(
         startSeconds: found ? found.segment.start : 0,
         segment: found ? found.segment : null,
         chunkIds: cand.chunkIdxs.map((i) => chunks[i]!.id),
+        similarity: cand.maxSim,
       };
     }),
   );
+  return { matches, coverage };
 }
