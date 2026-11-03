@@ -182,3 +182,58 @@ which the manifest and README carry. No YouTube API data is included.
   own typed-decision benchmark (0.36) and need fine-tuning (0.77). It has a custom decision head and
   no documented Transformers.js/WebGPU path. Plan: retrieval similarity is the primary signal; Laya
   is added as a re-ranker only if it beats retrieval on a small labeled set from the Big Data course.
+
+---
+
+## Build step 3: Transcript pipeline
+
+**Date:** 2026-11-03
+
+### What was built
+
+- `scripts/fetch_transcripts.py`: downloads English transcripts with `youtube-transcript-api`
+  1.2.4 into the gitignored `data/transcripts/` cache. Resumable (skips cached videos), logs failures
+  in `_status.json`, stops after 3 consecutive IP blocks (exit code 2).
+- `scripts/build_segments.py`: merges caption lines into 60-90 s segments, embeds each with
+  `fastembed` bge-small (the exact build HackerTube used), writes `public/data/segments/<vid>.json`
+  (start, end, 160-char snippet) + `<vid>.f16` (embeddings) + `index.json`.
+- `.github/workflows/transcripts.yml`: manual workflow (`limit` input) that runs both scripts and
+  commits new segments.
+- Verified locally on 8 videos, 408 segments; 99% are 60-90 s, all rows unit length.
+
+Run locally: `.venv/Scripts/python scripts/fetch_transcripts.py --limit 200`, then
+`.venv/Scripts/python scripts/build_segments.py`.
+
+### Key concepts
+
+**Caption snippets vs. segments.** YouTube captions come as short snippets (2-5 s each, with
+`start` and `duration`). One snippet is too short to mean anything; a whole video is too long to
+point at a moment. Grouping snippets into ~75 s windows gives units that hold one idea and still
+give a precise start time. Cuts only happen between snippets, so no sentence is split mid-word.
+
+**Why segment embeddings live in separate per-video files.** All segments for 3,008 videos would be
+~140 MB. The browser only needs segments for the ~12 candidate videos from Step A, so it fetches
+12 small files instead of one huge one. This is a "two-stage retrieval": a cheap coarse search
+over everything, then a fine search over a small subset.
+
+**Resumable, idempotent jobs.** A job that may be interrupted (rate limits, blocks) must be safe
+to rerun: cache every result, skip what is done, remember permanent failures (no transcript) so
+they are not retried, but retry temporary ones (blocked).
+
+**Same model, same build.** Segments are embedded with fastembed's quantized bge-small, exactly
+what HackerTube used for video vectors, so segment and video vectors live in the same space.
+
+### Options considered
+
+| Choice | Options | Picked | Why |
+|---|---|---|---|
+| Where to fetch | GitHub Actions, home PC, paid proxy | Actions with home-PC fallback | Actions IPs are often blocked by YouTube; proxies cost money. Transcripts rarely change, so one home run is acceptable. |
+| What to publish | full text, snippet + embeddings, embeddings only | snippet + embeddings | Full transcripts are creators' content; embeddings alone give nothing to show the student. |
+| Segment length | fixed 30 s, 60-90 s, by topic shift | 60-90 s | Long enough for a full explanation, short enough for a precise start. Topic-shift detection is a possible later upgrade. |
+
+### Finding that affects testing
+
+Only **one** of the 3,008 videos mentions Hadoop or MapReduce (a Strata 2014 keynote). HackerTube
+is what Hacker News recommends, and HN rarely recommends Hadoop lectures. The Big Data test in step
+10 will likely match general distributed-systems videos (e.g. MIT 6.824 talks) rather than
+Hadoop-specific ones. That is a coverage limit of the data, not a retrieval bug.

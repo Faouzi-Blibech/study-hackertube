@@ -224,3 +224,6 @@ data/raw/
 # Node / Vite
 node_modules/
 dist/
+
+# Raw YouTube transcripts (creator content, not redistributed)
+data/transcripts/
