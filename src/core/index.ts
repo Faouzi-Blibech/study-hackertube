@@ -1,6 +1,6 @@
 // Single entry point for the UI: PDF file in, chunks and ranked video matches out.
 // Everything runs in the browser; the PDF is never uploaded.
-import type { Coverage, Match, PdfChunk } from './types';
+import type { CourseIdentity, Coverage, Match, PdfChunk } from './types';
 import { chunkEmbeddingText, chunkPages } from './chunk';
 import { loadSegments, loadVideoIndex } from './data';
 import { embedTexts } from './embed';
@@ -21,6 +21,8 @@ export interface AnalysisResult {
   matches: Match[];
   /** How well HackerTube covers this course; drives the "limited coverage" notice. */
   coverage: Coverage;
+  /** Decision 1 (course identification). Optional until step 6 fills it. */
+  course?: CourseIdentity;
 }
 
 export async function analyzePdf(file: File, onProgress: (p: Progress) => void = () => {}): Promise<AnalysisResult> {
@@ -52,5 +54,5 @@ export async function analyzePdf(file: File, onProgress: (p: Progress) => void =
   return { chunks, matches, coverage };
 }
 
-export type { Coverage, Match, PdfChunk, Segment, Video } from './types';
+export type { CourseIdentity, Coverage, GalaxyData, Match, PdfChunk, Segment, Video } from './types';
 export { COVERAGE_THRESHOLD } from './coverage';

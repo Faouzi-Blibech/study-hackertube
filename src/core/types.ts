@@ -51,3 +51,16 @@ export interface Coverage {
   totalChunks: number;
   gaps: string[]; // up to 5 weakly covered topics (chunk headings or first words)
 }
+
+/** Decision 1: what course this is, from the taxonomy (16 areas, 150 categories). */
+export interface CourseIdentity {
+  area: { id: string; name: string; confidence: number }; // confidence 0..1
+  categories: { id: string; name: string; confidence: number }[]; // up to 3, best first, inside the area
+  method: 'embedding' | 'laya'; // which decider produced it
+}
+
+/** public/data/galaxy.json: 2D/3D layout of the catalog for the topic galaxy (step 8). */
+export interface GalaxyData {
+  categories: { id: string; name: string; area: string; x: number; y: number; z: number }[];
+  videos: { i: number; x: number; y: number; z: number }[]; // i = row in videos.json
+}
