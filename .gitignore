@@ -233,3 +233,7 @@ data/transcripts/
 
 # Chrome extension build output
 dist-extension/
+
+# Personal notes (local only)
+LEARNING.md
+PROGRESS.md

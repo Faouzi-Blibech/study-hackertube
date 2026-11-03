@@ -2,7 +2,8 @@
 
 Students upload a course PDF; the app finds the HackerTube video segments (with timestamps) that
 explain each chapter. Static site on GitHub Pages; all heavy work runs in the browser or in GitHub
-Actions. The full plan and build order are in `PLAN.md`; progress is in `PROGRESS.md`.
+Actions. The full plan and build order are in `PLAN.md`. `PROGRESS.md` and `LEARNING.md` are
+Faouzi's personal notes: gitignored, local only, never commit them.
 
 ## Hard rules
 
