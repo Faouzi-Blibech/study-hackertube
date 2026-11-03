@@ -41,6 +41,12 @@ export interface Match {
   similarity?: number; // best absolute cosine between this video and any chunk (0..1)
 }
 
+/** Consecutive PDF chunks under one heading and their strongest videos. */
+export interface SectionMatches {
+  title: string;
+  matches: Match[];
+}
+
 /**
  * How well HackerTube's catalog covers the uploaded course. A low level means the source data
  * has few videos on these topics; it is not a failure of the app.

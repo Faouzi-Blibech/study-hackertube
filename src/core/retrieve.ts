@@ -10,13 +10,13 @@
 // Step B (segment level): for each candidate, take the best segment against the chunks that
 //   hit it (max dot product); startSeconds = that segment's start.
 // Final score = aggregate / best aggregate, so the top match is 1 and the rest are relative.
-import type { Coverage, Match, PdfChunk, Segment, Video } from './types';
+import type { Coverage, Match, PdfChunk, SectionMatches, Segment, Video } from './types';
 import type { VideoSegments } from './data';
 import { assessCoverage } from './coverage';
 
 export interface RetrieveOptions {
-  topKPerChunk?: number; // default 20
-  topVideos?: number; // default 12
+  topKPerChunk?: number; // default 40
+  topVideos?: number; // default 40
   scoreBoost?: number; // default 0.1
 }
 
@@ -37,6 +37,7 @@ export interface Candidate {
 export interface RetrieveResult {
   matches: Match[];
   coverage: Coverage;
+  sections: SectionMatches[];
 }
 
 function dot(a: Float32Array, aOff: number, b: Float32Array, bOff: number, dims: number): number {
@@ -74,7 +75,7 @@ export function aggregateCandidates(
   videos: Pick<Video, 'score'>[],
   opts: RetrieveOptions = {},
 ): Candidate[] {
-  const topN = opts.topVideos ?? 12;
+  const topN = opts.topVideos ?? 40;
   const boost = opts.scoreBoost ?? 0.1;
   const maxScore = Math.max(1e-9, ...videos.map((v) => v.score));
   const acc = new Map<number, { sum: number; hits: { chunk: number; sim: number }[] }>();
@@ -94,6 +95,42 @@ export function aggregateCandidates(
   }
   candidates.sort((a, b) => b.aggregate - a.aggregate);
   return candidates.slice(0, topN);
+}
+
+export interface ChunkGroup {
+  title: string;
+  indices: number[];
+}
+
+/** Keep heading runs in document order; unheaded chunks continue the preceding run. */
+export function groupChunks(chunks: PdfChunk[], cap = 12): ChunkGroup[] {
+  const groups: ChunkGroup[] = [];
+  let previousHeading: string | null = null;
+  chunks.forEach((chunk, index) => {
+    const heading = chunk.heading?.trim() || null;
+    const previous = groups.at(-1);
+    if (!previous || (heading && heading !== previousHeading)) {
+      groups.push({ title: heading ?? 'Introduction', indices: [index] });
+    } else {
+      previous.indices.push(index);
+    }
+    if (heading) previousHeading = heading;
+  });
+  while (groups.length > cap) {
+    let smallest = 0;
+    for (let i = 1; i < groups.length; i++) {
+      if (groups[i]!.indices.length < groups[smallest]!.indices.length) smallest = i;
+    }
+    const left = smallest === 0 ? 0 : smallest === groups.length - 1 ? smallest - 1
+      : groups[smallest - 1]!.indices.length <= groups[smallest + 1]!.indices.length ? smallest - 1 : smallest;
+    const first = groups[left]!;
+    const second = groups[left + 1]!;
+    groups.splice(left, 2, {
+      title: first.title === second.title ? first.title : `${first.title} / ${second.title}`,
+      indices: [...first.indices, ...second.indices],
+    });
+  }
+  return groups;
 }
 
 /** Step B for one video: best segment against the given chunk rows; null when no segments. */
@@ -124,18 +161,27 @@ export async function retrieve(
   loadSegments: (vid: string) => Promise<VideoSegments | null>,
   opts: RetrieveOptions = {},
 ): Promise<RetrieveResult> {
-  if (chunks.length === 0) return { matches: [], coverage: assessCoverage([], []) };
-  const hits = topVideosPerChunk(chunkEmb, videoEmb, dims, opts.topKPerChunk ?? 20);
+  if (chunks.length === 0) return { matches: [], coverage: assessCoverage([], []), sections: [] };
+  const hits = topVideosPerChunk(chunkEmb, videoEmb, dims, opts.topKPerChunk ?? 40);
   const candidates = aggregateCandidates(hits, videos, opts);
   const best = candidates[0]?.aggregate ?? 1;
   const coverage = assessCoverage(chunks, hits);
-  const matches = await Promise.all(
-    candidates.map(async (cand): Promise<Match> => {
+  const segmentCache = new Map<string, Promise<VideoSegments | null>>();
+  const cachedSegments = (vid: string): Promise<VideoSegments | null> => {
+    let pending = segmentCache.get(vid);
+    if (!pending) {
+      pending = loadSegments(vid);
+      segmentCache.set(vid, pending);
+    }
+    return pending;
+  };
+  const toMatches = (ranked: Candidate[], normalizer: number): Promise<Match[]> => Promise.all(
+    ranked.map(async (cand): Promise<Match> => {
       const video = videos[cand.videoIdx]!;
-      const found = bestSegment(await loadSegments(video.vid), chunkEmb, cand.chunkIdxs, dims);
+      const found = bestSegment(await cachedSegments(video.vid), chunkEmb, cand.chunkIdxs, dims);
       return {
         video,
-        score: Math.min(1, Math.max(0, cand.aggregate / best)),
+        score: Math.min(1, Math.max(0, cand.aggregate / normalizer)),
         startSeconds: found ? found.segment.start : 0,
         segment: found ? found.segment : null,
         chunkIds: cand.chunkIdxs.map((i) => chunks[i]!.id),
@@ -143,5 +189,15 @@ export async function retrieve(
       };
     }),
   );
-  return { matches, coverage };
+  const groups = groupChunks(chunks);
+  const [matches, sections] = await Promise.all([
+    toMatches(candidates, best),
+    Promise.all(groups.map(async (group): Promise<SectionMatches> => {
+      const selected = new Set(group.indices);
+      const groupHits = hits.map((row, index) => selected.has(index) ? row : []);
+      const ranked = aggregateCandidates(groupHits, videos, { ...opts, topVideos: 5, scoreBoost: 0 });
+      return { title: group.title, matches: await toMatches(ranked, ranked[0]?.aggregate ?? 1) };
+    })),
+  ]);
+  return { matches, coverage, sections };
 }
