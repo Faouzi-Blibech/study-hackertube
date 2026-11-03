@@ -1,9 +1,10 @@
 // Single entry point for the UI: PDF file in, chunks and ranked video matches out.
 // Everything runs in the browser; the PDF is never uploaded.
-import type { CourseIdentity, Coverage, Match, PdfChunk } from './types';
+import type { CourseIdentity, Coverage, Match, PdfChunk, Video } from './types';
 import { chunkEmbeddingText, chunkPages } from './chunk';
-import { loadSegments, loadVideoIndex } from './data';
+import { loadSegments, loadTaxonomy, loadVideoIndex } from './data';
 import { embedTexts } from './embed';
+import { buildCentroids, identifyCourse } from './identify';
 import { extractPdf } from './pdf';
 import { retrieve } from './retrieve';
 
@@ -21,7 +22,7 @@ export interface AnalysisResult {
   matches: Match[];
   /** How well HackerTube covers this course; drives the "limited coverage" notice. */
   coverage: Coverage;
-  /** Decision 1 (course identification). Optional until step 6 fills it. */
+  /** Decision 1 (course identification); absent only when the taxonomy cannot be loaded. */
   course?: CourseIdentity;
 }
 
@@ -50,8 +51,24 @@ export async function analyzePdf(file: File, onProgress: (p: Progress) => void =
 
   report('retrieve', 0, 'Finding videos');
   const { matches, coverage } = await retrieve(chunks, chunkEmb, index.videos, index.embeddings, index.dims, loadSegments);
+  const course = await identify(chunkEmb, index.videos, index.embeddings, index.dims);
   report('done', 1, `Found ${matches.length} videos`);
-  return { chunks, matches, coverage };
+  return { chunks, matches, coverage, course };
+}
+
+/** Course identification must never break the main result: a missing taxonomy just leaves it out. */
+async function identify(
+  chunkEmb: Float32Array,
+  videos: Video[],
+  embeddings: Float32Array,
+  dims: number,
+): Promise<CourseIdentity | undefined> {
+  try {
+    const taxonomy = await loadTaxonomy();
+    return identifyCourse(chunkEmb, buildCentroids(videos, embeddings, dims, taxonomy));
+  } catch {
+    return undefined;
+  }
 }
 
 export type { CourseIdentity, Coverage, GalaxyData, Match, PdfChunk, Segment, Video } from './types';

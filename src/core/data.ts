@@ -101,3 +101,22 @@ export function loadSegments(vid: string): Promise<VideoSegments | null> {
   }
   return p;
 }
+
+export interface Taxonomy {
+  areas: { id: string; name: string; categories: { id: string; name: string; description: string }[] }[];
+}
+
+let taxonomyPromise: Promise<Taxonomy> | null = null;
+
+/** Load taxonomy.json once (16 areas, 150 categories). */
+export function loadTaxonomy(): Promise<Taxonomy> {
+  if (!taxonomyPromise) {
+    taxonomyPromise = fetchOk(dataUrl('taxonomy.json'))
+      .then((res) => res.json() as Promise<Taxonomy>)
+      .catch((err: unknown) => {
+        taxonomyPromise = null;
+        throw err;
+      });
+  }
+  return taxonomyPromise;
+}
