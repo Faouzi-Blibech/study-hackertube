@@ -1,4 +1,4 @@
-"""Build the browser data files from the raw HackerTube export.
+"""Build the browser data files from the raw HackerTube export (all videos except news/comedy/music).
 
 Reads data/raw/, writes public/data/:
   videos.json      filtered, deduplicated educational videos (same order as the embedding rows)
@@ -19,7 +19,8 @@ ROOT = Path(__file__).resolve().parent.parent
 RAW = ROOT / "data" / "raw"
 OUT = ROOT / "public" / "data"
 
-EDU_TYPES = {"lecture", "course", "tutorial", "explainer", "talk"}
+# Everything HackerTube has, except types that never explain a course topic.
+EXCLUDED_TYPES = {"news", "comedy", "music"}
 KEEP_FIELDS = ("vid", "title", "channel", "summary", "content_type", "level", "primary_topic", "tags", "score")
 
 
@@ -31,7 +32,7 @@ def select(videos: list[dict]) -> list[dict]:
     """Educational, non-news videos; duplicates (same normalized title) keep the best score."""
     best: dict[str, dict] = {}
     for v in videos:
-        if v["content_type"] not in EDU_TYPES or v["shelf_life"] == "news":
+        if v["content_type"] in EXCLUDED_TYPES or v["shelf_life"] == "news":
             continue
         key = norm_title(v["title"])
         if key not in best or v["score"] > best[key]["score"]:
@@ -74,11 +75,11 @@ def main() -> int:
         "dtype": "float16-le",
         "model": "BAAI/bge-small-en-v1.5",
         "source": "HackerTube (https://hackertube.org), ODC-By 1.0",
-        "content_types": sorted(EDU_TYPES),
+        "excluded_types": sorted(EXCLUDED_TYPES),
     }
     (OUT / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 
-    dropped_dupes = sum(1 for v in videos if v["content_type"] in EDU_TYPES and v["shelf_life"] != "news") - len(kept)
+    dropped_dupes = sum(1 for v in videos if v["content_type"] not in EXCLUDED_TYPES and v["shelf_life"] != "news") - len(kept)
     print(f"videos: {len(videos)} raw -> {len(kept)} kept ({dropped_dupes} duplicates/unembedded dropped)")
     for f in sorted(OUT.iterdir()):
         print(f"  {f.name}: {f.stat().st_size / 1e6:.2f} MB")
