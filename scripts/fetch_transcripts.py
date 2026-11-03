@@ -7,6 +7,7 @@ no_transcript, disabled, blocked, other. Permanent failures are skipped on rerun
 "blocked" is retried. Exit code 2 if stopped early by repeated IP blocks.
 """
 import argparse
+import random
 import json
 import sys
 import time
@@ -67,13 +68,20 @@ def main():
     ap.add_argument("--limit", type=int, default=0, help="max number of NEW fetch attempts")
     ap.add_argument("--vids", type=str, default="", help="comma-separated video ids (overrides videos.json order)")
     ap.add_argument("--sleep", type=float, default=1.0, help="seconds between videos")
+    ap.add_argument("--jitter", type=float, default=0.0, help="extra random 0..J seconds between videos")
+    ap.add_argument("--student-first", action="store_true",
+                    help="fetch course/lecture/tutorial videos first, then explainers, then talks")
     args = ap.parse_args()
 
     OUT.mkdir(parents=True, exist_ok=True)
     if args.vids:
         vids = [v.strip() for v in args.vids.split(",") if v.strip()]
     else:
-        vids = [v["vid"] for v in json.loads(VIDEOS.read_text(encoding="utf8"))]
+        videos = json.loads(VIDEOS.read_text(encoding="utf8"))
+        if args.student_first:
+            rank = {"course": 0, "lecture": 0, "tutorial": 0, "explainer": 1, "talk": 2}
+            videos.sort(key=lambda v: rank.get(v["content_type"], 3))  # stable: keeps score order
+        vids = [v["vid"] for v in videos]
 
     status = load_status()
     api = YouTubeTranscriptApi()
@@ -128,7 +136,7 @@ def main():
             print(f"[other] {vid} {type(e).__name__}: {str(e)[:120]}")
         if attempts % 10 == 0:
             save_status(status)
-        time.sleep(args.sleep)
+        time.sleep(args.sleep + random.uniform(0, args.jitter))
 
     save_status(status)
     print(f"done: attempted={attempts} ok={ok} failed={fail}")
