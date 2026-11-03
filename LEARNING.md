@@ -380,3 +380,28 @@ work here?". For GPU, storage, camera etc., always try the real operation and ke
 **Concept: code splitting.** `import('../core/index')` tells Vite to put that module and its
 dependencies in a separate file that the browser downloads only when that line runs. Visitors who
 just browse never pay for the AI model runtime.
+
+---
+
+## Transcripts: option A failed, option B hit rate limits
+
+**Date:** 2026-11-03
+
+- **A (GitHub Actions):** blocked on the very first 3 requests ("YouTube is blocking this IP").
+  GitHub runners live in Azure datacenters, and YouTube blocks datacenter IP ranges wholesale.
+- **B (home PC, 1.5 s between videos):** 31 transcripts, then blocked. Home IPs are not banned, but
+  YouTube rate-limits anything that looks like a bot (many requests, regular rhythm).
+- **Now:** `scripts/fetch_slowly.sh` fetches course/lecture/tutorial videos first, waits 6-10 s
+  between videos (random jitter so the rhythm looks less robotic), and after a block waits 45 min
+  before resuming. It gives up after 4 blocked rounds in a row that fetched nothing.
+
+**Concept: rate limiting and back-off.** Servers cap how many requests one client may make per time
+window. The polite (and effective) client slows down, adds randomness, and waits longer after each
+refusal ("back-off") instead of retrying immediately, which only extends the block.
+
+**Concept: prioritize under scarcity.** When a resource is limited, spend it where it matters:
+lectures and tutorials are what students need most, so they go first; talks come last.
+
+**Option kept for later:** the Chrome extension runs on the student's own connection and could
+fetch transcripts on demand for just the ~12 candidate videos of each analysis. That spreads the
+load across users instead of one IP fetching 3,000 videos.
