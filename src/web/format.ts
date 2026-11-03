@@ -17,7 +17,12 @@ export const youtubeUrl = (vid: string, start: number): string =>
   `https://www.youtube.com/watch?v=${vid}&t=${Math.floor(start)}s`;
 export const hackerTubeUrl = (vid: string): string => `https://hackertube.org/watch/${vid}`;
 export const embedUrl = (vid: string, start: number): string =>
-  `https://www.youtube-nocookie.com/embed/${vid}?start=${Math.floor(start)}&autoplay=1&rel=0`;
+  `https://www.youtube-nocookie.com/embed/${vid}?start=${Math.floor(start)}&autoplay=1&rel=0&hl=${uiLang()}`;
+
+/** Player UI language from the browser, so YouTube does not auto-translate titles by location. */
+function uiLang(): string {
+  return encodeURIComponent((navigator.language || 'en').split('-')[0]!);
+}
 
 /** True when the video is related to the course part but not a close match. */
 export const isLoose = (m: Match): boolean => m.similarity !== undefined && m.similarity < COVERAGE_THRESHOLD;

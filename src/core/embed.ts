@@ -9,7 +9,7 @@ export const MODEL_ID = 'Xenova/bge-small-en-v1.5';
 export const EMBED_DIMS = 384;
 
 export interface EmbedOptions {
-  /** Defaults to 'webgpu' when navigator.gpu exists, otherwise 'wasm'. Use 'cpu' in node. */
+  /** Defaults to 'webgpu' when a GPU adapter is available, otherwise 'wasm'. Use 'cpu' in node. */
   device?: DeviceType;
   /** Defaults to 'q8'. */
   dtype?: DataType;
@@ -17,8 +17,23 @@ export interface EmbedOptions {
   onModelProgress?: (fraction: number) => void;
 }
 
-export function defaultDevice(): DeviceType {
-  return typeof navigator !== 'undefined' && 'gpu' in navigator ? 'webgpu' : 'wasm';
+interface GpuLike {
+  requestAdapter(): Promise<unknown>;
+}
+
+/**
+ * 'webgpu' only when the browser can actually hand out a GPU adapter. Many browsers expose
+ * navigator.gpu but return no adapter (blocklisted driver, headless, remote desktop), so the
+ * mere presence of the API is not enough.
+ */
+export async function defaultDevice(): Promise<DeviceType> {
+  const gpu = typeof navigator !== 'undefined' ? (navigator as Navigator & { gpu?: GpuLike }).gpu : undefined;
+  if (!gpu) return 'wasm';
+  try {
+    return (await gpu.requestAdapter()) ? 'webgpu' : 'wasm';
+  } catch {
+    return 'wasm';
+  }
 }
 
 let extractorPromise: Promise<FeatureExtractionPipeline> | null = null;
@@ -28,13 +43,23 @@ let progressSink: ((fraction: number) => void) | undefined;
 export function getExtractor(opts: EmbedOptions = {}): Promise<FeatureExtractionPipeline> {
   progressSink = opts.onModelProgress;
   if (!extractorPromise) {
-    extractorPromise = pipeline('feature-extraction', MODEL_ID, {
-      device: opts.device ?? defaultDevice(),
-      dtype: opts.dtype ?? 'q8',
-      progress_callback: (info: ProgressInfo) => {
-        if (info.status === 'progress_total') progressSink?.(info.progress / 100);
-      },
-    }).catch((err: unknown) => {
+    const load = (device: DeviceType): Promise<FeatureExtractionPipeline> =>
+      pipeline('feature-extraction', MODEL_ID, {
+        device,
+        dtype: opts.dtype ?? 'q8',
+        progress_callback: (info: ProgressInfo) => {
+          if (info.status === 'progress_total') progressSink?.(info.progress / 100);
+        },
+      });
+    extractorPromise = (async () => {
+      const device = opts.device ?? (await defaultDevice());
+      try {
+        return await load(device);
+      } catch (err) {
+        if (device !== 'webgpu') throw err;
+        return load('wasm'); // WebGPU can still fail at session creation; WASM works everywhere
+      }
+    })().catch((err: unknown) => {
       extractorPromise = null; // allow a retry after a failed download
       throw err;
     });

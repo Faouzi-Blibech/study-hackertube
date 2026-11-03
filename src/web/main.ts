@@ -1,5 +1,5 @@
 import type { Match, Video } from '../core/types';
-import { hooks, setStatus, showCoverage, showMatches } from './app';
+import { hooks, setBusy, setStatus, showCoverage, showMatches } from './app';
 import './styles.css';
 
 export { hooks, setStatus, showCoverage, showMatches };
@@ -25,7 +25,29 @@ async function loadVideos(): Promise<Video[]> {
   return (await res.json()) as Video[];
 }
 
+async function analyze(file: File): Promise<void> {
+  setBusy(true);
+  showCoverage(null);
+  try {
+    setStatus('Loading the analyzer');
+    const { analyzePdf } = await import('../core/index'); // heavy (pdf.js, Transformers.js): load on demand
+    const { chunks, matches, coverage } = await analyzePdf(file, (p) => setStatus(p.message));
+    if (matches.length === 0) {
+      setStatus(chunks.length === 0 ? 'No readable text found. Is this a scanned PDF?' : 'No videos found.', 'error');
+      return;
+    }
+    showCoverage(coverage);
+    showMatches(matches, `Videos for ${file.name}`);
+    setStatus(`${matches.length} videos for ${chunks.length} sections. Your PDF never left this browser.`);
+  } catch (err) {
+    setStatus(`Could not analyze the PDF: ${err instanceof Error ? err.message : String(err)}`, 'error');
+  } finally {
+    setBusy(false);
+  }
+}
+
 function wireUpload(): void {
+  hooks.onPdfSelected = (file) => void analyze(file);
   const input = document.querySelector<HTMLInputElement>('#pdf-input');
   input?.addEventListener('change', () => {
     const file = input.files?.[0];

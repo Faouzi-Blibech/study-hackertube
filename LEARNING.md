@@ -341,3 +341,42 @@ cluster high (even unrelated texts get ~0.6), so thresholds for this model are a
 | Gap between top-1 and top-3 similarity | Flat score lists hint at "no real match", but the signal was noisy in the test set. |
 | Ask Laya "does this video explain this chunk?" | More precise in theory, but Laya is near chance zero-shot (step 2 findings). Revisit in step 6. |
 | No notice, show results anyway | Misleads students into thinking the app failed. |
+
+---
+
+## Wiring the UI to the core, and the first end-to-end test
+
+**Date:** 2026-11-03
+
+### What was built
+
+- `src/web/main.ts`: the upload button now runs `analyzePdf`, streams progress into the status
+  line, then shows the coverage notice and the matched videos.
+- The analyzer (pdf.js + Transformers.js, ~600 kB of JS plus a 27 MB WebAssembly runtime) is loaded
+  with a dynamic `import()` only when a PDF is chosen. The home page stays at 12 kB of JS.
+- The YouTube embed gets `hl=<browser language>`, so YouTube stops auto-translating titles and
+  captions based on the viewer's location.
+
+### End-to-end result (headless Chromium, generated 4-chapter Big Data PDF)
+
+12 videos in ~15 s (model download included). Top results: Rich Hickey "Deconstructing the
+Database", "How We've Scaled Dropbox", Martin Fowler "Introduction to NoSQL", Kleppmann's Samza
+talk. Coverage: limited, 0 of 4 sections with a close match, all cards labeled "Loose match".
+That is the honest answer for this catalog. Start times are 0 for now because only 8 videos have
+transcript segments yet (run the transcript job to fill the rest).
+
+### Bug found and fixed: WebGPU present but unusable
+
+**Symptom:** "no available backend found ... Failed to get GPU adapter".
+**Root cause:** the code chose WebGPU whenever `navigator.gpu` existed. Many browsers expose the
+API but return no adapter (blocked GPU driver, remote desktop, headless, some laptops on battery).
+**Fix:** ask for an adapter first (`await navigator.gpu.requestAdapter()`); use WebGPU only if one
+comes back, and if loading on WebGPU still fails, retry on WebAssembly.
+**Regression test:** `src/core/device.test.ts` (4 cases).
+
+**Concept: feature detection vs. capability detection.** "Does the API exist?" is not "does it
+work here?". For GPU, storage, camera etc., always try the real operation and keep a fallback.
+
+**Concept: code splitting.** `import('../core/index')` tells Vite to put that module and its
+dependencies in a separate file that the browser downloads only when that line runs. Visitors who
+just browse never pay for the AI model runtime.
