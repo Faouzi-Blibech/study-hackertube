@@ -126,3 +126,59 @@ current file). Vite warned that `__dirname` will break under its future native c
 | Package manager | npm, pnpm | npm | Ships with Node; pnpm's advantages show mostly with workspaces, which we skipped. |
 | Build tool | Vite, webpack, plain `tsc` | Vite | Near-instant dev server, zero-config TypeScript, first-class static output. |
 | Branching | commit to `main`, `dev` branch | `dev` | `main` will drive GitHub Pages deploys; only tested work should reach it. |
+
+---
+
+## Build step 2: Data prep script
+
+**Date:** 2026-11-03
+
+### What was built
+
+`scripts/prepare_data.py` reads `data/raw/` and writes `public/data/`:
+- `videos.json` (1.8 MB): 3,008 educational videos, best score first, compact fields only.
+- `video_emb.f16` (2.3 MB): their embeddings as raw float16 bytes, row `i` = `videos.json[i]`.
+- `taxonomy.json`, `manifest.json` (count, dims, dtype, model, credit).
+
+Run: `python -I scripts/prepare_data.py` (prints counts and file sizes).
+
+### Key concepts
+
+**Filtering.** Keep `content_type` in {lecture, course, tutorial, explainer, talk} and drop
+`shelf_life == "news"`. 3,017 pass; 9 were re-uploads of the same talk.
+
+**Deduplication by normalized title.** Lowercase, replace everything that is not a letter or digit
+with a space. "Simple Made Easy!" and "simple made easy" become the same key; the copy with the
+higher score wins.
+
+**Index alignment.** The embedding matrix has no ids inside it: row `i` means "video number `i`".
+When we filter videos we must pick the matching rows in the same order, or every search result
+points at the wrong video. The script asserts this alignment and that rows are unit length.
+
+**float16 and raw binary.** A float16 number is 2 bytes (float32 is 4). For similarity search
+float16's ~3 significant digits are plenty. Raw bytes (no header) are trivial to load in the
+browser: `fetch` -> `ArrayBuffer` -> typed array. JSON would be ~4x bigger and slow to parse.
+Little-endian (`<f2`) is fixed explicitly because every browser CPU is little-endian.
+
+**Derived data in git.** Unlike `data/raw/`, `public/data/` is committed: GitHub Pages can only
+serve files that are in the repo, and it is small. ODC-By allows sharing derived data with credit,
+which the manifest and README carry. No YouTube API data is included.
+
+### Options considered
+
+| Choice | Options | Picked | Why |
+|---|---|---|---|
+| Embedding format | JSON arrays, float32 binary, float16 binary, int8 quantized | float16 binary | Half the size of float32 with no measurable loss; int8 needs a scale per row and saves only 1 MB more. |
+| Data format | JSONL, JSON array, SQLite (sql.js) | JSON array | One `fetch` + `JSON.parse`; 1.8 MB is small enough. SQLite adds a 1 MB WASM runtime for nothing. |
+| Keep cited-only videos (no recommenders) | drop, keep | keep | A cited lecture can still be the best explanation; `score` already ranks it low. |
+
+### Risk findings logged during this step
+
+- **Transcripts (step 3):** YouTube blocks most cloud-provider IPs, which likely includes GitHub
+  Actions runners (Azure). The documented fix is paid proxies, which breaks "free to run". Plan:
+  write the job so it runs in Actions *and* locally; if Actions is blocked, run it once from a home
+  connection and commit the output. Only transcripts change rarely, so a one-off local run is fine.
+- **Laya (step 6):** the model card reports the base checkpoints are near chance zero-shot on its
+  own typed-decision benchmark (0.36) and need fine-tuning (0.77). It has a custom decision head and
+  no documented Transformers.js/WebGPU path. Plan: retrieval similarity is the primary signal; Laya
+  is added as a re-ranker only if it beats retrieval on a small labeled set from the Big Data course.
