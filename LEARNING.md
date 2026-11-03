@@ -237,3 +237,63 @@ Only **one** of the 3,008 videos mentions Hadoop or MapReduce (a Strata 2014 key
 is what Hacker News recommends, and HN rarely recommends Hadoop lectures. The Big Data test in step
 10 will likely match general distributed-systems videos (e.g. MIT 6.824 talks) rather than
 Hadoop-specific ones. That is a coverage limit of the data, not a retrieval bug.
+
+---
+
+## Build steps 4-5: PDF extraction, chunking, embeddings, retrieval
+
+**Date:** 2026-11-03
+
+### What was built (all in `src/core/`, 42 tests passing with `npm test`)
+
+- `pdf.ts`: pdf.js reads each page's text lines with font sizes, in a Web Worker.
+- `chunk.ts`: removes lines repeated on more than half the pages (slide footers, course names),
+  detects headings, and packs text into chunks of up to 350 words (target 300), under bge's 512-token
+  limit. Chunks under 8 words are dropped.
+- `embed.ts`: Transformers.js runs `Xenova/bge-small-en-v1.5` (8-bit quantized), CLS pooling,
+  normalized, no prefix. Uses WebGPU when the browser has it, otherwise WebAssembly.
+- `f16.ts`: decodes float16 bytes into float32 by hand (bit manipulation).
+- `data.ts`: loads videos, the embedding matrix, and per-video segments on demand.
+- `retrieve.ts`: two-step retrieval; `index.ts`: one entry point, `analyzePdf(file, onProgress)`.
+
+### Key concepts
+
+**Tokens and the 512 limit.** Models read tokens (word pieces), not words. English is about 1.3
+tokens per word, so 350 words is roughly 450 tokens. Text past 512 tokens is silently cut off,
+which is why chunks are sized by words with a safety margin.
+
+**CLS pooling.** A BERT-style model outputs one vector per token. bge was trained so that the
+vector of the special first token (`[CLS]`) represents the whole text. Other models average all
+token vectors (mean pooling). Using the wrong pooling gives vectors in a different space.
+
+**Proving compatibility.** HackerTube's vectors came from fastembed in Python; ours come from
+Transformers.js in JavaScript. The test embeds three video titles in node and checks each video is
+found near the top of HackerTube's matrix: ranks 0, 1 and 0. Same space, confirmed.
+
+**Quantization (q8).** Weights stored as 8-bit integers instead of 32-bit floats: the model
+download is about 4x smaller (~34 MB) at a tiny accuracy cost. HackerTube used a quantized build
+too.
+
+**Two-step retrieval and score aggregation.** Step A: every chunk votes for its 20 most similar
+videos; a video's total is the sum of the similarities it received, times a small boost (up to
++10%) from HackerTube's quality score. Summing rewards videos that explain many parts of the course.
+Step B: in the 12 best videos, find the single segment closest to the chunks that voted for it;
+its start time is where playback begins.
+
+**Float16 decoding.** 1 sign bit, 5 exponent bits, 10 mantissa bits. Value =
+(-1)^sign * 2^(exp-15) * (1 + mantissa/1024), with special cases for zero, subnormals (exp = 0) and
+infinity/NaN (exp = 31). The tests check each case.
+
+### Options considered
+
+| Choice | Options | Picked | Why |
+|---|---|---|---|
+| Aggregation | max similarity, sum of top-K, mean | sum of top-K | Max favors one lucky chunk; mean punishes videos that cover one chapter well. Sum rewards coverage while K cuts noise. |
+| Model precision | fp32, fp16, q8 | q8 | Smallest download, matches HackerTube's quantized build; overridable. |
+| Score display | absolute cosine, relative to best | relative (best = 1.0) | Easy to rank, but hides "nothing matched well". Revisit in step 6: add an absolute threshold so weak results say so. |
+
+### Open points
+
+- The pdf.js worker import has been type-checked but not yet run in a real browser build (checked
+  when the UI is wired).
+- The heading detector is untuned; it gets tuned on the real Big Data and PLC/VHDL PDFs in step 10.
