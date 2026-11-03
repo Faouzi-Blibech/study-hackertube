@@ -7,7 +7,7 @@ export interface Video {
   title: string;
   channel: string;
   summary: string;
-  content_type: 'lecture' | 'course' | 'tutorial' | 'explainer' | 'talk';
+  content_type: string; // HackerTube content type; news, comedy and music are excluded at build time
   level: 'general' | 'intro' | 'intermediate' | 'advanced';
   primary_topic: string;
   tags: string[];
@@ -39,6 +39,12 @@ export interface Match {
   segment: Segment | null;
   chunkIds: number[]; // which PDF chunks this match explains
   similarity?: number; // best absolute cosine between this video and any chunk (0..1)
+}
+
+/** Consecutive PDF chunks under one heading and their strongest videos. */
+export interface SectionMatches {
+  title: string;
+  matches: Match[];
 }
 
 /**

@@ -1,6 +1,6 @@
 // Single entry point for the UI: PDF file in, chunks and ranked video matches out.
 // Everything runs in the browser; the PDF is never uploaded.
-import type { CourseIdentity, Coverage, Match, PdfChunk, Video } from './types';
+import type { CourseIdentity, Coverage, Match, PdfChunk, SectionMatches, Video } from './types';
 import { chunkEmbeddingText, chunkPages } from './chunk';
 import { loadSegments, loadTaxonomy, loadVideoIndex } from './data';
 import { embedTexts } from './embed';
@@ -20,6 +20,7 @@ export interface Progress {
 export interface AnalysisResult {
   chunks: PdfChunk[];
   matches: Match[];
+  sections: SectionMatches[];
   /** How well HackerTube covers this course; drives the "limited coverage" notice. */
   coverage: Coverage;
   /** Decision 1 (course identification); absent only when the taxonomy cannot be loaded. */
@@ -37,7 +38,7 @@ export async function analyzePdf(file: File, onProgress: (p: Progress) => void =
   report('chunk', 1, `Split into ${chunks.length} chunks`);
   if (chunks.length === 0) {
     report('done', 1, 'No readable text found in this PDF');
-    return { chunks, matches: [], coverage: { level: 'limited', coveredChunks: 0, totalChunks: 0, gaps: [] } };
+    return { chunks, matches: [], sections: [], coverage: { level: 'limited', coveredChunks: 0, totalChunks: 0, gaps: [] } };
   }
 
   report('model', 0, 'Loading embedding model');
@@ -50,10 +51,33 @@ export async function analyzePdf(file: File, onProgress: (p: Progress) => void =
   ]);
 
   report('retrieve', 0, 'Finding videos');
-  const { matches, coverage } = await retrieve(chunks, chunkEmb, index.videos, index.embeddings, index.dims, loadSegments);
+  const { matches, coverage, sections } = await retrieve(chunks, chunkEmb, index.videos, index.embeddings, index.dims, loadSegments);
   const course = await identify(chunkEmb, index.videos, index.embeddings, index.dims);
   report('done', 1, `Found ${matches.length} videos`);
-  return { chunks, matches, coverage, course };
+  return { chunks, matches, sections, coverage, course };
+}
+
+/** Search the catalog using the same private, in-browser embedding pipeline as PDF analysis. */
+export async function searchText(
+  query: string,
+  onProgress: (p: Progress) => void = () => {},
+): Promise<{ matches: Match[]; coverage: Coverage }> {
+  const text = query.trim();
+  if (!text) throw new Error('Enter a topic to search.');
+  const chunk: PdfChunk = { id: 0, page: 1, heading: text, text };
+  onProgress({ stage: 'model', fraction: 0, message: 'Loading embedding model' });
+  const [index, embedding] = await Promise.all([
+    loadVideoIndex(),
+    embedTexts([text], {
+      onModelProgress: (fraction) => onProgress({ stage: 'model', fraction, message: 'Downloading embedding model' }),
+      onBatch: () => onProgress({ stage: 'embed', fraction: 1, message: 'Embedded topic' }),
+    }),
+  ]);
+  onProgress({ stage: 'retrieve', fraction: 0, message: 'Finding videos' });
+  const { matches, coverage } = await retrieve([chunk], embedding, index.videos, index.embeddings, index.dims, loadSegments,
+    { topKPerChunk: 40, topVideos: 40 });
+  onProgress({ stage: 'done', fraction: 1, message: `Found ${matches.length} videos` });
+  return { matches, coverage };
 }
 
 /** Course identification must never break the main result: a missing taxonomy just leaves it out. */
@@ -71,5 +95,5 @@ async function identify(
   }
 }
 
-export type { CourseIdentity, Coverage, GalaxyData, Match, PdfChunk, Segment, Video } from './types';
+export type { CourseIdentity, Coverage, GalaxyData, Match, PdfChunk, SectionMatches, Segment, Video } from './types';
 export { COVERAGE_THRESHOLD } from './coverage';

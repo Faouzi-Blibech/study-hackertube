@@ -1,5 +1,5 @@
-import type { Coverage, CourseIdentity, Match } from '../core/types';
-import { buildGrid } from './cards';
+import type { Coverage, CourseIdentity, Match, SectionMatches } from '../core/types';
+import { buildCard, buildGrid } from './cards';
 import { mountGalaxy } from './galaxy-mount';
 import type { GalaxyView } from './galaxy/galaxy-view';
 import type { GlGrid } from './grid/gl-grid';
@@ -21,13 +21,16 @@ const results = (): HTMLElement => {
   return n;
 };
 
-let current: { matches: Match[]; title: string; catalog: boolean } | null = null;
+export interface Area { id: string; name: string }
+let current: { matches: Match[]; title: string; catalog: boolean; sections: SectionMatches[]; areas: Area[] } | null = null;
+let selectedArea: string | null = null;
 let course: CourseIdentity | null = null;
 let view: View = 'grid';
 let viewHost: HTMLElement | null = null;
 let gl: GlGrid | null = null;
 let galaxy: GalaxyView | null = null;
 let renderToken = 0;
+let moreObserver: IntersectionObserver | null = null;
 
 export function setStatus(text: string, kind: 'info' | 'error' = 'info'): void {
   const s = document.querySelector<HTMLElement>('#status');
@@ -38,6 +41,17 @@ export function setStatus(text: string, kind: 'info' | 'error' = 'info'): void {
 
 export function setBusy(busy: boolean): void {
   document.querySelector('#upload-label')?.setAttribute('aria-busy', String(busy));
+  const search = document.querySelector<HTMLButtonElement>('#search-button');
+  if (search) search.disabled = busy;
+}
+
+export function setProgress(stage: string | null, fraction = 0): void {
+  const bar = document.querySelector<HTMLProgressElement>('#progress-bar');
+  if (!bar) return;
+  bar.hidden = !stage || stage === 'done';
+  const stages = ['extract', 'chunk', 'model', 'embed', 'retrieve'];
+  const index = stages.indexOf(stage ?? '');
+  bar.value = index < 0 ? 0 : Math.min(100, ((index + Math.max(0, Math.min(1, fraction))) / stages.length) * 100);
 }
 
 function teardownGl(): void {
@@ -46,6 +60,8 @@ function teardownGl(): void {
 }
 
 function teardownViews(): void {
+  moreObserver?.disconnect();
+  moreObserver = null;
   teardownGl();
   galaxy?.destroy();
   galaxy = null;
@@ -103,13 +119,17 @@ export function showCoverage(c: Coverage | null): void {
 export interface ShowOptions {
   /** True for the home page: the galaxy then shows the whole catalog instead of lighting up matches. */
   catalog?: boolean;
+  sections?: SectionMatches[];
+  areas?: Area[];
 }
 
 const galaxyAllowed = (): boolean => !reducedQuery.matches && webglAvailable();
 
 /** Render a list of matches as a grid or galaxy (replaces whatever is shown). */
 export function showMatches(matches: Match[], title = 'Matches for your course', opts: ShowOptions = {}): void {
-  current = { matches, title, catalog: opts.catalog ?? false };
+  current = { matches, title, catalog: opts.catalog ?? false, sections: opts.sections ?? [], areas: opts.areas ?? [] };
+  selectedArea = null;
+  view = 'grid';
   ++renderToken;
   teardownViews();
   const root = results();
@@ -143,7 +163,7 @@ export function showMatches(matches: Match[], title = 'Matches for your course',
 
 function renderView(): void {
   if (!current || !viewHost) return;
-  const { matches, catalog } = current;
+  const { matches, catalog, sections, areas } = current;
   const host = viewHost;
   const token = ++renderToken;
   teardownViews();
@@ -170,9 +190,82 @@ function renderView(): void {
     });
     return;
   }
-  const grid = buildGrid(matches);
+  if (catalog) {
+    const filters = document.createElement('div');
+    filters.className = 'area-filters';
+    filters.setAttribute('role', 'group');
+    filters.setAttribute('aria-label', 'Filter by topic area');
+    for (const area of [{ id: '', name: 'All' }, ...areas]) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'area-filter';
+      button.textContent = area.name;
+      button.setAttribute('aria-pressed', String((selectedArea ?? '') === area.id));
+      button.addEventListener('click', () => {
+        selectedArea = area.id || null;
+        renderView();
+      });
+      filters.append(button);
+    }
+    host.append(filters);
+  }
+  if (sections.length > 0) {
+    const byChapter = document.createElement('section');
+    byChapter.className = 'chapters';
+    const heading = document.createElement('h3');
+    heading.textContent = 'By chapter';
+    byChapter.append(heading);
+    sections.forEach((section) => {
+      const block = document.createElement('section');
+      block.className = 'chapter';
+      const title = document.createElement('h4');
+      title.textContent = section.title;
+      const row = buildGrid(section.matches);
+      row.classList.add('chapter-grid');
+      row.addEventListener('click', (e) => onGridClick(e, section.matches));
+      block.append(title, row);
+      byChapter.append(block);
+    });
+    host.append(byChapter);
+    const allTitle = document.createElement('h3');
+    allTitle.className = 'all-videos-title';
+    allTitle.textContent = 'All videos';
+    host.append(allTitle);
+  }
+  const shown = selectedArea ? matches.filter((match) => match.video.area === selectedArea) : matches;
+  const count = document.querySelector<HTMLElement>('.results-head .count');
+  if (count) count.textContent = `${shown.length} video${shown.length === 1 ? '' : 's'}`;
+  const initial = catalog ? 40 : 24;
+  const grid = buildGrid(shown.slice(0, initial));
   host.append(grid);
-  grid.addEventListener('click', (e) => onGridClick(e, matches));
+  grid.addEventListener('click', (e) => onGridClick(e, shown));
+  if (shown.length > initial) {
+    let visible = initial;
+    const more = document.createElement('button');
+    more.type = 'button';
+    more.className = 'show-more';
+    more.textContent = 'Show more';
+    const loadMore = (): void => {
+      const next = Math.min(visible + (catalog ? 40 : 16), shown.length);
+      const cells = document.createDocumentFragment();
+      for (let i = visible; i < next; i++) cells.append(buildCard(shown[i]!, i));
+      grid.append(cells);
+      visible = next;
+      if (visible === shown.length) {
+        moreObserver?.disconnect();
+        moreObserver = null;
+        more.remove();
+      }
+    };
+    more.addEventListener('click', loadMore);
+    host.append(more);
+    if (catalog && 'IntersectionObserver' in window) {
+      moreObserver = new IntersectionObserver((entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) loadMore();
+      }, { rootMargin: '300px 0px' });
+      moreObserver.observe(more);
+    }
+  }
   void enhance(grid, token);
 }
 
@@ -203,5 +296,7 @@ function onGridClick(e: MouseEvent, matches: Match[]): void {
 
 // Switching reduced-motion at runtime swaps between the 3D and plain grids.
 reducedQuery.addEventListener('change', () => {
-  if (current) showMatches(current.matches, current.title, { catalog: current.catalog });
+  if (current) showMatches(current.matches, current.title, {
+    catalog: current.catalog, sections: current.sections, areas: current.areas,
+  });
 });

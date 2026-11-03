@@ -44,8 +44,9 @@ describe('decodeF16', () => {
     const file = readFileSync(resolve(import.meta.dirname, '../../public/data/video_emb.f16'));
     const buf = file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength);
     const all = decodeF16(buf as ArrayBuffer);
-    expect(all.length).toBe(3008 * 384);
-    for (const row of [0, 1, 1500, 3007]) {
+    const { count } = JSON.parse(readFileSync(resolve(import.meta.dirname, '../../public/data/manifest.json'), 'utf8')) as { count: number };
+    expect(all.length).toBe(count * 384);
+    for (const row of [0, 1, Math.floor(count / 2), count - 1]) {
       let s = 0;
       for (let j = 0; j < 384; j++) s += all[row * 384 + j]! ** 2;
       expect(Math.sqrt(s)).toBeCloseTo(1, 2);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { aggregateCandidates, bestSegment, retrieve, topVideosPerChunk } from './retrieve';
+import { aggregateCandidates, bestSegment, groupChunks, retrieve, topVideosPerChunk } from './retrieve';
 import type { VideoSegments } from './data';
 import type { PdfChunk, Video } from './types';
 
@@ -97,5 +97,48 @@ describe('retrieve', () => {
 
   it('returns nothing for an empty document', async () => {
     expect((await retrieve([], new Float32Array(0), videos, videoEmb, DIMS, async () => null)).matches).toEqual([]);
+  });
+});
+
+describe('chapter grouping', () => {
+  it.each([
+    { headings: ['A', 'A', 'B', 'B', 'A'], titles: ['A', 'B', 'A'], indices: [[0, 1], [2, 3], [4]] },
+    { headings: [null, null, 'A', null, 'B', null], titles: ['Introduction', 'A', 'B'], indices: [[0, 1], [2, 3], [4, 5]] },
+    { headings: ['A', null, 'A', 'B'], titles: ['A', 'B'], indices: [[0, 1, 2], [3]] },
+    { headings: [null, 'Introduction'], titles: ['Introduction', 'Introduction'], indices: [[0], [1]] },
+  ])('groups consecutive headings and attaches null headings: $headings', ({ headings, titles, indices }) => {
+    const groups = groupChunks(headings.map((heading, id) => ({ ...chunk(id), heading })));
+    expect(groups.map((group) => group.title)).toEqual(titles);
+    expect(groups.map((group) => group.indices)).toEqual(indices);
+  });
+
+  it('merges the smallest neighbouring groups until the cap', () => {
+    const headings = Array.from({ length: 14 }, (_, i) => `Chapter ${i}`);
+    const groups = groupChunks(headings.map((heading, id) => ({ ...chunk(id), heading })));
+    expect(groups).toHaveLength(12);
+    expect(groups.flatMap((group) => group.indices)).toEqual(headings.map((_, i) => i));
+    expect(groups.some((group) => group.indices.length > 1)).toBe(true);
+  });
+
+  it('returns at most five ranked matches per group with group-specific segment starts', async () => {
+    const many = Array.from({ length: 8 }, (_, i) => video(`V${i}`));
+    const embeddings = f(...many.map((_, i) => unit(8 - i, i, 0)));
+    const chunks = [{ ...chunk(0), heading: 'First' }, { ...chunk(1), heading: 'Second' }];
+    const rows = f(unit(1, 0, 0), unit(0, 1, 0));
+    const segs: VideoSegments = {
+      segments: [{ start: 10, end: 20, text: 'first' }, { start: 50, end: 60, text: 'second' }],
+      embeddings: rows,
+    };
+    const result = await retrieve(chunks, rows, many, embeddings, DIMS, async () => segs,
+      { topKPerChunk: 8, topVideos: 8, scoreBoost: 0 });
+    expect(result.sections).toHaveLength(2);
+    for (const section of result.sections) {
+      expect(section.matches).toHaveLength(5);
+      expect(section.matches.map((m) => m.score)).toEqual([...section.matches.map((m) => m.score)].sort((a, b) => b - a));
+    }
+    expect(result.sections[0]!.matches[0]!.video.vid).toBe('V0');
+    expect(result.sections[0]!.matches[0]!.startSeconds).toBe(10);
+    expect(result.sections[1]!.matches[0]!.video.vid).toBe('V7');
+    expect(result.sections[1]!.matches[0]!.startSeconds).toBe(50);
   });
 });

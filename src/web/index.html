@@ -17,12 +17,22 @@
           <h1>Study<span>HackerTube</span></h1>
           <p class="tagline">Upload a course PDF. We pick the HackerTube videos, and the moment to start.</p>
         </div>
-        <label class="upload" id="upload-label">
-          <input id="pdf-input" type="file" accept=".pdf,application/pdf" />
-          <span class="upload-text">Upload course PDF</span>
-        </label>
+        <div class="input-actions">
+          <label class="upload" id="upload-label">
+            <input id="pdf-input" type="file" accept=".pdf,application/pdf" />
+            <span class="upload-text">Upload course PDF</span>
+          </label>
+          <form id="topic-form" class="topic-form" role="search">
+            <label for="topic-input">or type a topic (e.g. backpropagation, TCP congestion control)</label>
+            <div class="topic-controls">
+              <input id="topic-input" type="search" autocomplete="off" />
+              <button id="search-button" type="submit">Search</button>
+            </div>
+          </form>
+        </div>
       </header>
       <p id="status" class="status" role="status" aria-live="polite"></p>
+      <progress id="progress-bar" class="progress-bar" max="100" value="0" aria-label="Analysis progress" hidden></progress>
       <div id="coverage" class="notice" role="note" hidden></div>
       <main id="app" data-ready="false">
         <section id="results" aria-labelledby="results-title"></section>
@@ -31,6 +41,7 @@
         Video data from HackerTube (hackertube.org), ODC-By 1.0. Not affiliated with YouTube or HackerTube.
       </footer>
     </div>
+    <div id="drop-overlay" class="drop-overlay" aria-hidden="true" hidden>Drop a PDF to find videos</div>
     <script type="module" src="./main.ts"></script>
   </body>
 </html>
