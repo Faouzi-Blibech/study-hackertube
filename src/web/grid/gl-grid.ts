@@ -38,15 +38,7 @@ export interface GlGrid {
 
 const lerp = (a: number, b: number, k: number): number => a + (b - a) * k;
 
-/** True when a WebGL context can be created at all. */
-export function webglAvailable(): boolean {
-  try {
-    const c = document.createElement('canvas');
-    return !!(c.getContext('webgl2') ?? c.getContext('webgl'));
-  } catch {
-    return false;
-  }
-}
+export { webglAvailable } from '../webgl';
 
 /**
  * One renderer for the whole grid. The DOM cards stay the layout and input source;

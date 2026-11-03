@@ -1,7 +1,11 @@
-import type { Coverage, Match } from '../core/types';
+import type { Coverage, CourseIdentity, Match } from '../core/types';
 import { buildGrid } from './cards';
+import { mountGalaxy } from './galaxy-mount';
+import type { GalaxyView } from './galaxy/galaxy-view';
 import type { GlGrid } from './grid/gl-grid';
 import { openPlayer } from './player';
+import { buildCourseLine, buildViewToggle, type View } from './views';
+import { webglAvailable } from './webgl';
 
 /** Slot for the PDF pipeline; main.ts replaces `hooks.onPdfSelected` once the core is wired. */
 export const hooks = {
@@ -17,8 +21,12 @@ const results = (): HTMLElement => {
   return n;
 };
 
-let current: { matches: Match[]; title: string } | null = null;
+let current: { matches: Match[]; title: string; catalog: boolean } | null = null;
+let course: CourseIdentity | null = null;
+let view: View = 'grid';
+let viewHost: HTMLElement | null = null;
 let gl: GlGrid | null = null;
+let galaxy: GalaxyView | null = null;
 let renderToken = 0;
 
 export function setStatus(text: string, kind: 'info' | 'error' = 'info'): void {
@@ -35,6 +43,17 @@ export function setBusy(busy: boolean): void {
 function teardownGl(): void {
   gl?.destroy();
   gl = null;
+}
+
+function teardownViews(): void {
+  teardownGl();
+  galaxy?.destroy();
+  galaxy = null;
+}
+
+/** Set (or clear) the identified course; shown above the next results and highlighted in the galaxy. */
+export function setCourse(c: CourseIdentity | null): void {
+  course = c;
 }
 
 /** Calm notice explaining that thin results are a catalog limit. Null or 'good' hides it. */
@@ -81,13 +100,22 @@ export function showCoverage(c: Coverage | null): void {
   box.hidden = false;
 }
 
-/** Render a list of matches as the grid (replaces whatever is shown). */
-export function showMatches(matches: Match[], title = 'Matches for your course'): void {
-  current = { matches, title };
-  const token = ++renderToken;
-  teardownGl();
+export interface ShowOptions {
+  /** True for the home page: the galaxy then shows the whole catalog instead of lighting up matches. */
+  catalog?: boolean;
+}
+
+const galaxyAllowed = (): boolean => !reducedQuery.matches && webglAvailable();
+
+/** Render a list of matches as a grid or galaxy (replaces whatever is shown). */
+export function showMatches(matches: Match[], title = 'Matches for your course', opts: ShowOptions = {}): void {
+  current = { matches, title, catalog: opts.catalog ?? false };
+  ++renderToken;
+  teardownViews();
   const root = results();
   root.replaceChildren();
+  const line = buildCourseLine(opts.catalog ? null : course);
+  if (line) root.append(line);
 
   const head = document.createElement('div');
   head.className = 'results-head';
@@ -98,20 +126,53 @@ export function showMatches(matches: Match[], title = 'Matches for your course')
   count.className = 'count';
   count.textContent = `${matches.length} video${matches.length === 1 ? '' : 's'}`;
   head.append(h2, count);
+  if (matches.length > 0 && galaxyAllowed()) {
+    head.append(buildViewToggle(view, (v) => {
+      view = v;
+      renderView();
+    }));
+  } else {
+    view = 'grid';
+  }
   root.append(head);
+  viewHost = document.createElement('div');
+  viewHost.className = 'view-host';
+  root.append(viewHost);
+  renderView();
+}
 
+function renderView(): void {
+  if (!current || !viewHost) return;
+  const { matches, catalog } = current;
+  const host = viewHost;
+  const token = ++renderToken;
+  teardownViews();
+  host.replaceChildren();
+  document.body.dataset.mode = 'html';
   if (matches.length === 0) {
     const p = document.createElement('p');
     p.className = 'empty';
     p.textContent = 'No matching videos found.';
-    root.append(p);
-    document.body.dataset.mode = 'html';
+    host.append(p);
+    return;
+  }
+  if (view === 'galaxy' && galaxyAllowed()) {
+    void mountGalaxy({
+      host, matches, catalog, course,
+      isCurrent: () => token === renderToken,
+      onFail: (message) => {
+        view = 'grid';
+        setStatus(message, 'error');
+        document.querySelector<HTMLButtonElement>('.view-toggle button[data-view="grid"]')?.click();
+      },
+    }).then((v) => {
+      if (v) galaxy = v;
+    });
     return;
   }
   const grid = buildGrid(matches);
-  root.append(grid);
+  host.append(grid);
   grid.addEventListener('click', (e) => onGridClick(e, matches));
-  document.body.dataset.mode = 'html';
   void enhance(grid, token);
 }
 
@@ -142,5 +203,5 @@ function onGridClick(e: MouseEvent, matches: Match[]): void {
 
 // Switching reduced-motion at runtime swaps between the 3D and plain grids.
 reducedQuery.addEventListener('change', () => {
-  if (current) showMatches(current.matches, current.title);
+  if (current) showMatches(current.matches, current.title, { catalog: current.catalog });
 });
