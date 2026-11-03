@@ -6,6 +6,11 @@ on:
       limit:
         description: "Max new videos to fetch transcripts for"
         default: "200"
+  # workflow_dispatch only appears once this file is on the default branch; until then a push to
+  # dev that touches this file starts a run.
+  push:
+    branches: [dev]
+    paths: [".github/workflows/transcripts.yml"]
 
 permissions:
   contents: write
@@ -36,7 +41,7 @@ jobs:
       - name: Fetch transcripts
         run: |
           set +e
-          python scripts/fetch_transcripts.py --limit "${{ inputs.limit }}"
+          python scripts/fetch_transcripts.py --limit "${{ inputs.limit || '200' }}"
           code=$?
           if [ "$code" -eq 2 ]; then
             echo "::warning::YouTube blocked this IP (likely cloud IP); continuing with cached transcripts"
